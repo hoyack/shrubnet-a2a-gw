@@ -103,8 +103,13 @@ function warnIfPlaintext(endpoint: string) {
   } catch { /* exporter reports a bad URL itself */ }
 }
 
-/** Called once from main before the app is created. */
-export function setup() {
+let initialized = false;
+
+/** Called from main before the app is created. Idempotent: later calls are no-ops, so providers and
+ * the context manager are registered exactly once. Returns true only on the call that initialized. */
+export function setup(): boolean {
+  if (initialized) return false;
+  initialized = true;
   const resource = resourceFromAttributes({ 'service.name': process.env.OTEL_SERVICE_NAME || 'kimiclaw-a2a-gateway' });
   context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
   if (OTLP_ENDPOINT) {
@@ -121,6 +126,7 @@ export function setup() {
   }
   trace.setGlobalTracerProvider(tracerProvider);
   metrics.setGlobalMeterProvider(meterProvider);
+  return true;
 }
 
 export const tracer = () => trace.getTracer('kimiclaw');

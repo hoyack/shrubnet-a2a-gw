@@ -30,22 +30,22 @@ export function bearerAuth(req: any, res: any, next: () => void) {
   next();
 }
 
-/** Route table as FastAPI exposes it: GET routes also answer HEAD; exact paths only. */
+/** Route table as the Python app exposes it: exact paths only. HEAD is not routed (Python returns 405 for it). */
 const ROUTES: Record<string, string[]> = {
-  '/': ['GET', 'HEAD', 'POST'],
-  '/.well-known/agent.json': ['GET', 'HEAD'],
-  '/healthz': ['GET', 'HEAD'],
-  '/readyz': ['GET', 'HEAD'],
-  '/docs': ['GET', 'HEAD'],
-  '/redoc': ['GET', 'HEAD'],
-  '/openapi.json': ['GET', 'HEAD'],
+  '/': ['GET', 'POST'],
+  '/.well-known/agent.json': ['GET'],
+  '/healthz': ['GET'],
+  '/readyz': ['GET'],
+  '/docs': ['GET'],
+  '/redoc': ['GET'],
+  '/openapi.json': ['GET'],
 };
 
 export function routeGuard(req: any, res: any, next: () => void) {
   const allowed = ROUTES[req.path];
   if (!allowed) return sendJson(res, 404, { detail: 'Not Found' });
   if (!allowed.includes(req.method)) {
-    res.setHeader('allow', allowed.filter((m) => m !== 'HEAD').join(', '));
+    res.setHeader('allow', allowed.join(', '));
     return sendJson(res, 405, { detail: 'Method Not Allowed' });
   }
   next();

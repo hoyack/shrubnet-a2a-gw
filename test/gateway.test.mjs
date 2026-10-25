@@ -33,7 +33,7 @@ test('agent card is public and byte-identical to the Python app', async (t) => {
   assert.equal(await r.text(), JSON.parse(fs.readFileSync(path.join(ROOT, 'test/golden/agent_card.raw.json'), 'utf8')));
 });
 
-test('auth: bearer required except agent card and /healthz; 404/405 like FastAPI', async (t) => {
+test('auth: bearer required except agent card and /healthz; 404/405 like the Python app', async (t) => {
   const gw = await gateway(t);
   for (const h of [{}, { Authorization: TOKEN }, { Authorization: `Bearer ${TOKEN}x` }, { Authorization: `bearer ${TOKEN}` }]) {
     const r = await fetch(gw.base + '/', { headers: h });
@@ -224,4 +224,33 @@ test('OTLP endpoint replaces files and warns on plaintext', async (t) => {
   await sleep(200);
   assert.ok(gw.out().includes('telemetry is sent unencrypted'));
   assert.equal(fs.existsSync(gw.tel) && fs.readdirSync(gw.tel).length > 0, false);
+});
+
+test('HEAD on GET routes returns 405 like the Python app', async (t) => {
+  const gw = await gateway(t);
+  for (const p of ['/healthz', '/.well-known/agent.json', '/readyz', '/openapi.json', '/docs', '/redoc', '/']) {
+    const r = await gw.fetch(p, { method: 'HEAD' });
+    assert.equal(r.status, 405, `HEAD ${p}`);
+  }
+  const r = await gw.fetch('/healthz', { method: 'HEAD' });
+  assert.equal(r.headers.get('allow'), 'GET');
+  assert.equal((await gw.fetch('/', { method: 'HEAD' })).headers.get('allow'), 'GET, POST');
+});
+
+test('telemetry setup() is idempotent', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const os = await import('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tel-'));
+  const code = `
+    const t = require(${JSON.stringify(path.join(ROOT, 'dist/telemetry.js'))});
+    const api = require('@opentelemetry/api');
+    const a = t.setup(); const tp = api.trace.getTracerProvider();
+    const b = t.setup(); const tp2 = api.trace.getTracerProvider();
+    console.log(JSON.stringify({ a, b, same: tp === tp2 }));
+    t.shutdown().then(() => process.exit(0));`;
+  const out = execFileSync(process.execPath, ['-e', code], {
+    cwd: ROOT, env: { ...process.env, GATEWAY_TELEMETRY_DIR: dir, OTEL_EXPORTER_OTLP_ENDPOINT: '', KIMICLAW_TOKEN: 'x' }, encoding: 'utf8',
+  });
+  assert.deepEqual(JSON.parse(out.trim().split('\n').pop()), { a: true, b: false, same: true });
+  fs.rmSync(dir, { recursive: true, force: true });
 });

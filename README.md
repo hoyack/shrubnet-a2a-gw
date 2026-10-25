@@ -108,13 +108,16 @@ fans out exponentially. The n8n side MUST filter on `event`.
 
 Nothing a client or the n8n flow sees in normal use. Edge cases that differ:
 
-- Outbound `User-Agent` is `kimiclaw-a2a-gateway-node` (Python sends `Python-urllib/3.x`). The golden replay ignores it.
+- Outbound `User-Agent` is `kimiclaw-a2a-gateway-node` (Python sends `Python-urllib/3.x`). This repo's Node golden replay ignores it.
+  Running the Python repo's unmodified `golden.py` against this server fails only on that header (its `KEEP_HDR` keeps
+  `user-agent`): 13 passed / 11 failed on default, 0 / 2 on n8n_basic. With `user-agent` ignored, all 26 pass.
+- Integer env settings (`config.ts` `int()`) are stricter than Python's `int()`: `_` digit separators (`1_000`) and
+  non-ASCII digits are rejected here but accepted by Python. Surrounding whitespace is accepted by both.
 - Stdout log lines are JSON rather than Python's logging format; the message text is the same.
 - Inputs JavaScript JSON can't represent the same way: `NaN`/`Infinity` (Python accepts, here a parse error),
   integers above 2^53 (lose precision), `1.0` (echoed as `1`), and objects with integer-like keys (reordered).
 - `/healthz/` (trailing slash) with a valid token returns 404 here; Starlette redirects with 307.
-- Logging follows the hardening in kimiclaw-a2a-gateway's uncommitted working copy (secret-free failure logs),
-  which is newer than its head 108d1ef.
+- Logging follows the hardening in kimiclaw-a2a-gateway at head 6889e48 (secret-free failure logs).
 - `/docs/oauth2-redirect` is not served.
 
 ## Tests
