@@ -30,15 +30,17 @@ export function bearerAuth(req: any, res: any, next: () => void) {
   next();
 }
 
-/** Route table as the Python app exposes it: exact paths only. HEAD is not routed (Python returns 405 for it). */
+/** Route table as the Python app exposes it: exact paths only. HEAD is allowed only on the docs routes (FastAPI
+ * serves HEAD there); every other route returns 405 for HEAD, as in Python 6889e48. Auth runs first, so an
+ * unauthorized HEAD on the docs routes is 401. */
 const ROUTES: Record<string, string[]> = {
   '/': ['GET', 'POST'],
   '/.well-known/agent.json': ['GET'],
   '/healthz': ['GET'],
   '/readyz': ['GET'],
-  '/docs': ['GET'],
-  '/redoc': ['GET'],
-  '/openapi.json': ['GET'],
+  '/docs': ['GET', 'HEAD'],
+  '/redoc': ['GET', 'HEAD'],
+  '/openapi.json': ['GET', 'HEAD'],
 };
 
 export function routeGuard(req: any, res: any, next: () => void) {

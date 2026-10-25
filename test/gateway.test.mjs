@@ -226,9 +226,16 @@ test('OTLP endpoint replaces files and warns on plaintext', async (t) => {
   assert.equal(fs.existsSync(gw.tel) && fs.readdirSync(gw.tel).length > 0, false);
 });
 
-test('HEAD on GET routes returns 405 like the Python app', async (t) => {
+test('HEAD matches the Python app: 200 on docs routes, 405 elsewhere', async (t) => {
   const gw = await gateway(t);
-  for (const p of ['/healthz', '/.well-known/agent.json', '/readyz', '/openapi.json', '/docs', '/redoc', '/']) {
+  for (const p of ['/docs', '/redoc', '/openapi.json']) {
+    const r = await gw.fetch(p, { method: 'HEAD' });
+    assert.equal(r.status, 200, `HEAD ${p}`);
+    assert.equal((await r.text()).length, 0, `HEAD ${p} body`);
+    const u = await fetch(gw.base + p, { method: 'HEAD' });
+    assert.equal(u.status, 401, `unauthorized HEAD ${p}`);
+  }
+  for (const p of ['/healthz', '/.well-known/agent.json', '/readyz', '/']) {
     const r = await gw.fetch(p, { method: 'HEAD' });
     assert.equal(r.status, 405, `HEAD ${p}`);
   }

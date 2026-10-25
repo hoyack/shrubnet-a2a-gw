@@ -116,7 +116,7 @@ Nothing a client or the n8n flow sees in normal use. Edge cases that differ:
 - Stdout log lines are JSON rather than Python's logging format; the message text is the same.
 - Inputs JavaScript JSON can't represent the same way: `NaN`/`Infinity` (Python accepts, here a parse error),
   integers above 2^53 (lose precision), `1.0` (echoed as `1`), and objects with integer-like keys (reordered).
-- `/healthz/` (trailing slash) with a valid token returns 404 here; Starlette redirects with 307.
+- `/healthz/`, `/docs/` and `/healthz%2F` with a valid token return 404 here; Starlette redirects with 307.
 - Logging follows the hardening in kimiclaw-a2a-gateway at head 6889e48 (secret-free failure logs).
 - `/docs/oauth2-redirect` is not served.
 
