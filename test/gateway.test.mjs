@@ -187,7 +187,7 @@ test('telemetry files: events, spans in one trace, no message or reply text', as
   assert.ok(spans.some((s) => s.name === 'notify' && s.context.trace_id === tr));
   assert.ok(spans.some((s) => s.name === 'rpc' && s.context.trace_id === tr));
   for (const s of [logs, traces, gw.out()]) for (const n of ['SECRET-OK-77', 'SECRET-FAIL-88', 'echo:', 'boom']) assert.equal(s.includes(n), false, n);
-  assert.ok(gw.out().includes('inbound task_id=ok1 len=12'));
+  assert.match(gw.out(), /inbound task_id=ok1 (message_id=\S+ )?len=12/);
   assert.ok(gw.out().includes('agent run failed task=bad1 error_type='));
 });
 
@@ -204,10 +204,13 @@ test('stream rpc span and http_request duration cover the whole stream', async (
   assert.ok(req.duration_ms >= 1900);
 });
 
-test('payload text is logged only with GATEWAY_LOG_PAYLOADS=1', async (t) => {
+test('payload text is never logged, even with legacy GATEWAY_LOG_PAYLOADS=1 (F26)', async (t) => {
   const gw = await gateway(t, { GATEWAY_LOG_PAYLOADS: '1' });
   await gw.rpc('message/send', userMsg('PROMPT-OK-77 hello'));
-  assert.ok(gw.out().includes('PROMPT-OK-77'));
+  await gw.stop();
+  const out = gw.out();
+  assert.ok(out.includes('inbound task_id=') && out.includes('len=18'), out);
+  for (const text of [out, gw.file('logs.jsonl')]) assert.ok(!text.includes('PROMPT-OK-77'));
 });
 
 test('missing or blank KIMICLAW_TOKEN fails clearly', () => {

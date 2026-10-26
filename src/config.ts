@@ -33,7 +33,6 @@ export const NOTIFY_EVENTS = new Set(
 export const NOTIFY_TIMEOUT_MS = 10_000;
 export const NOTIFY_FAIL_LIMIT = int('GATEWAY_NOTIFY_FAIL_LIMIT', '5');
 export const NOTIFY_COOLDOWN_S = int('GATEWAY_NOTIFY_COOLDOWN_S', '900');
-export const LOG_PAYLOADS = (process.env.GATEWAY_LOG_PAYLOADS ?? '0') === '1';
 export const MAX_TEXT = 200_000;
 export const AGENT_TIMEOUT = 560; // seconds, passed to openclaw
 export const AGENT_CONCURRENCY = 3;

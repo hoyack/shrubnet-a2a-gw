@@ -1,7 +1,7 @@
 /** In-memory task store and task execution. Mirrors gateway/services/task_store.py, quirks included:
  * notify is awaited inline, and a cancel can be overwritten by the agent finishing later. */
 import { randomUUID } from 'crypto';
-import { AGENT_CONCURRENCY, LOG_PAYLOADS, MAX_TEXT, TASK_TTL_MS } from './config';
+import { AGENT_CONCURRENCY, MAX_TEXT, TASK_TTL_MS } from './config';
 import { LOG } from './log';
 import { runAgent } from './agent-runner';
 import { notify } from './notifier';
@@ -142,8 +142,10 @@ export function startTask(reqId: Json, params: Json, queue: Queue<Json> | null):
   const taskId = hashable(or(get(msg, 'taskId'), randomUUID()));
   const ctxId = or(get(msg, 'contextId'), randomUUID());
 
-  if (LOG_PAYLOADS) {
-    LOG.info(`inbound task_id=${taskId} ctx=${ctxId} role=${pyStr(role)} text=${JSON.stringify([...text].slice(0, 2000).join(''))}`);
+  // F26: never log message bodies; ids and length only.
+  const messageId = get(msg, 'messageId');
+  if (messageId) {
+    LOG.info(`inbound task_id=${taskId} message_id=${messageId} len=${codePoints(text)}`);
   } else {
     LOG.info(`inbound task_id=${taskId} len=${codePoints(text)}`);
   }
