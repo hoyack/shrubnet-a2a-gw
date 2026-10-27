@@ -1,5 +1,6 @@
 // Behaviour tests against the built server (port of the Python characterization + contract tests).
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -213,17 +214,64 @@ test('payload text is never logged, even with legacy GATEWAY_LOG_PAYLOADS=1 (F26
   for (const text of [out, gw.file('logs.jsonl')]) assert.ok(!text.includes('PROMPT-OK-77'));
 });
 
+// Raw-text checks: JSON.stringify leaves U+2028/2029/NEL raw, so look for them in the raw output (and NEL, U+0085, explicitly).
+const FORGE_TAIL = 'FORGED-LINE level=ERROR\x1b[31m\u2028\u2029\u0085\x1c\x1d\x1e\x0b\x0cx';
+const BAD_RAW = /[\x00-\x08\x0b-\x1f\x7f-\x9f\u2028\u2029]/; // C0 (minus \t,\n), DEL, C1 incl. NEL U+0085, LS, PS
+function assertNoForgery(out) {
+  for (const l of out.split('\n')) {
+    if (!l) continue;
+    assert.ok(!l.startsWith('FORGED-LINE'), l);
+    assert.ok(!BAD_RAW.test(l) && !l.includes('\r'), `raw separator/control char in log line: ${JSON.stringify(l)}`);
+  }
+  assert.ok(!out.includes('\r'));
+}
+
+test('log-safety regex covers NEL (U+0085), LS and PS', () => {
+  for (const c of ['\u0085', '\u2028', '\u2029', '\x1c', '\x1d', '\x1e', '\x1b', '\x7f']) assert.ok(BAD_RAW.test(c), JSON.stringify(c));
+  assert.ok(!BAD_RAW.test('plain \\x85 text'));
+});
+
 test('client messageId cannot forge log lines: control chars escaped, length capped', async (t) => {
   const gw = await gateway(t);
-  const forged = 'm1\r\nFORGED-LINE level=ERROR\x1b[31m\u2028x' + 'A'.repeat(500);
+  const forged = 'm1\r\n' + FORGE_TAIL + 'A'.repeat(500);
   await gw.rpc('message/send', userMsg('hello', { messageId: forged, taskId: 'forge1' }));
   await gw.stop();
   const lines = gw.out().split('\n');
   const inbound = lines.filter((l) => l.includes('inbound task_id=forge1'));
   assert.equal(inbound.length, 1, gw.out());
-  assert.ok(!lines.some((l) => l.startsWith('FORGED-LINE')), gw.out());
-  assert.ok(!/[\x00-\x08\x0b-\x1f\x7f\u2028\u2029]/.test(inbound[0]) && !inbound[0].includes('\r'));
+  assertNoForgery(gw.out());
   assert.ok(!inbound[0].includes('A'.repeat(129)));
+});
+
+test('client taskId cannot forge log lines (inbound, agent-failed, notify ok + failed)', async (t) => {
+  const forged = 't1\r\n' + FORGE_TAIL + 'B'.repeat(500);
+  const hook = await webhook(t);
+  for (const url of [hook.url, 'http://127.0.0.1:9/hook']) {
+    const gw = await gateway(t, { GATEWAY_NOTIFY_URL: url });
+    await gw.rpc('message/send', userMsg('hello FAIL', { taskId: forged }));
+    for (let i = 0; i < 50 && !gw.out().includes('notify task_failed'); i++) await sleep(100);
+    await gw.stop();
+    const lines = gw.out().split('\n');
+    for (const needle of ['inbound task_id=t1', 'agent run failed task=t1', 'notify task_failed task=t1']) {
+      const hits = lines.filter((l) => l.includes(needle));
+      assert.equal(hits.length, 1, `${url} ${needle}\n${gw.out()}`);
+      assert.ok(!hits[0].includes('B'.repeat(129)));
+    }
+    assertNoForgery(gw.out());
+  }
+});
+
+test('JSON-RPC id (reqId) cannot forge log lines on SSE stream errors', () => {
+  const forged = 'r1\r\n' + FORGE_TAIL + 'C'.repeat(500);
+  const prog = `
+    const { sseEvents } = require('./dist/a2a.controller.js');
+    const queue = { get: async () => { throw new Error('boom'); } };
+    const res = { on() {}, writeHead() {}, write() {}, end() {} };
+    sseEvents(process.argv[1], queue, res).then(() => process.exit(0));`;
+  const r = spawnSync(process.execPath, ['-e', prog, forged], { cwd: ROOT, env: { ...process.env, KIMICLAW_TOKEN: TOKEN }, encoding: 'utf8', timeout: 20_000 });
+  assert.ok(r.stdout.includes('sse error req_id=r1'), `${r.stdout}\n${r.stderr}`);
+  assertNoForgery(r.stdout);
+  assert.ok(!r.stdout.includes('C'.repeat(129)));
 });
 
 test('missing or blank KIMICLAW_TOKEN fails clearly', () => {

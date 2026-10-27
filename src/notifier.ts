@@ -2,7 +2,7 @@
  * (json.dumps default separators, same key order); headers are the same set apart from User-Agent. */
 import * as http from 'http';
 import * as https from 'https';
-import { LOG } from './log';
+import { LOG, logSafe } from './log';
 import { NOTIFY_AUTH_MODE, NOTIFY_AUTH_USER, NOTIFY_COOLDOWN_S, NOTIFY_EVENTS, NOTIFY_FAIL_LIMIT, NOTIFY_TIMEOUT_MS, NOTIFY_URL, TOKEN } from './config';
 import { now, pyDumps } from './py';
 import { metric, tracer } from './telemetry';
@@ -52,14 +52,14 @@ export async function notify(event: string, taskId: string, ctxId: string, extra
     const status = await postJson(NOTIFY_URL, pyDumps(payload));
     span.setAttribute('http.response.status_code', status);
     fails = 0;
-    LOG.info(`notify ${event} task=${taskId} -> ${status}`);
+    LOG.info(`notify ${event} task=${logSafe(taskId)} -> ${status}`);
   } catch (e) {
     fails += 1;
     metric().notifyFailures.add(1, { 'notify.event': event });
     span.setAttribute('error', true);
     let host = 'None';
     try { host = new URL(NOTIFY_URL).hostname || 'None'; } catch { /* keep None */ }
-    LOG.warning(`notify ${event} task=${taskId} failed (${fails}/${NOTIFY_FAIL_LIMIT}) host=${host} error_type=${e.name}`);
+    LOG.warning(`notify ${event} task=${logSafe(taskId)} failed (${fails}/${NOTIFY_FAIL_LIMIT}) host=${host} error_type=${e.name}`);
     if (fails >= NOTIFY_FAIL_LIMIT) {
       disabledUntil = Date.now() + NOTIFY_COOLDOWN_S * 1000;
       fails = 0;

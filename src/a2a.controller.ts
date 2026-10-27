@@ -2,7 +2,7 @@
 import { Controller, Get, Post, Req, Res } from '@nestjs/common';
 import { AGENT_TIMEOUT } from './config';
 import { sendJson } from './http';
-import { LOG } from './log';
+import { LOG, logSafe } from './log';
 import { get, hashable, now, or, pyDumps, pyStr, truthy } from './py';
 import { Json, Queue, rpcError, startTask, tasks } from './task-store';
 
@@ -39,7 +39,7 @@ function readBody(req: any): Promise<string> {
 }
 
 /** SSE events; a keepalive comment every 15 s so proxies don't cut idle streams. */
-async function sseEvents(reqId: Json, queue: Queue<Json>, res: any) {
+export async function sseEvents(reqId: Json, queue: Queue<Json>, res: any) {
   let closed = false;
   res.on('close', () => { closed = true; queue.put(null); });
   res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache' });
@@ -52,7 +52,7 @@ async function sseEvents(reqId: Json, queue: Queue<Json>, res: any) {
       if (truthy(ev.final)) break;
     }
   } catch (e) {
-    LOG.error(`sse error req_id=${reqId} error_type=${e.name}`);
+    LOG.error(`sse error req_id=${logSafe(reqId)} error_type=${e.name}`);
     res.write(`data: ${pyDumps(rpcError(reqId, -32000, `stream error: ${e.message}`))}\n\n`);
   }
   res.end();
