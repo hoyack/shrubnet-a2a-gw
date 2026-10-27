@@ -209,8 +209,21 @@ test('payload text is never logged, even with legacy GATEWAY_LOG_PAYLOADS=1 (F26
   await gw.rpc('message/send', userMsg('PROMPT-OK-77 hello'));
   await gw.stop();
   const out = gw.out();
-  assert.ok(out.includes('inbound task_id=') && out.includes('len=18'), out);
+  assert.ok(out.includes('inbound task_id=') && out.includes('message_id=m1 len=18'), out);
   for (const text of [out, gw.file('logs.jsonl')]) assert.ok(!text.includes('PROMPT-OK-77'));
+});
+
+test('client messageId cannot forge log lines: control chars escaped, length capped', async (t) => {
+  const gw = await gateway(t);
+  const forged = 'm1\r\nFORGED-LINE level=ERROR\x1b[31m\u2028x' + 'A'.repeat(500);
+  await gw.rpc('message/send', userMsg('hello', { messageId: forged, taskId: 'forge1' }));
+  await gw.stop();
+  const lines = gw.out().split('\n');
+  const inbound = lines.filter((l) => l.includes('inbound task_id=forge1'));
+  assert.equal(inbound.length, 1, gw.out());
+  assert.ok(!lines.some((l) => l.startsWith('FORGED-LINE')), gw.out());
+  assert.ok(!/[\x00-\x08\x0b-\x1f\x7f\u2028\u2029]/.test(inbound[0]) && !inbound[0].includes('\r'));
+  assert.ok(!inbound[0].includes('A'.repeat(129)));
 });
 
 test('missing or blank KIMICLAW_TOKEN fails clearly', () => {

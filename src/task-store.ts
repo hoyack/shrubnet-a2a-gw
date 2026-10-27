@@ -130,6 +130,17 @@ async function executeTask(taskId: Json, ctxId: Json, text: string, queue: Queue
   });
 }
 
+const MAX_LOG_ID = 128;
+
+/** Client-supplied ids go in log lines: escape control chars (no log forging) and cap the length (matches Python _log_safe). */
+function logSafe(value: unknown): string {
+  return [...String(value)].slice(0, MAX_LOG_ID).map((c) => {
+    if (!/[\p{C}\p{Z}]/u.test(c) || c === ' ') return c;
+    const n = c.codePointAt(0)!;
+    return n < 256 ? `\\x${n.toString(16).padStart(2, '0')}` : `\\u${n.toString(16).padStart(4, '0')}`;
+  }).join('');
+}
+
 /** Validates params.message and starts the task in the background. Returns a JSON-RPC error or the ids. */
 export function startTask(reqId: Json, params: Json, queue: Queue<Json> | null): { error: Json } | { taskId: Json; contextId: Json } {
   const msg = or(get(params, 'message'), {});
@@ -145,7 +156,7 @@ export function startTask(reqId: Json, params: Json, queue: Queue<Json> | null):
   // F26: never log message bodies; ids and length only.
   const messageId = get(msg, 'messageId');
   if (messageId) {
-    LOG.info(`inbound task_id=${taskId} message_id=${messageId} len=${codePoints(text)}`);
+    LOG.info(`inbound task_id=${taskId} message_id=${logSafe(messageId)} len=${codePoints(text)}`);
   } else {
     LOG.info(`inbound task_id=${taskId} len=${codePoints(text)}`);
   }
