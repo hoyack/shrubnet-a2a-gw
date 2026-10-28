@@ -274,6 +274,24 @@ test('JSON-RPC id (reqId) cannot forge log lines on SSE stream errors', () => {
   assert.ok(!r.stdout.includes('C'.repeat(129)));
 });
 
+test('task-crashed log escapes forged taskId and logs error_type only', () => {
+  const forged = 'c1\r\n' + FORGE_TAIL + 'D'.repeat(500);
+  // Force executeTask to reject before the agent try/catch: emit() calls queue.put and throws.
+  const prog = `
+    delete process.env.GATEWAY_NOTIFY_URL;
+    const { startTask } = require('./dist/task-store.js');
+    const queue = { put() { throw Object.assign(new Error('secret-crash-msg'), { name: 'CrashError' }); } };
+    const params = { message: { role: 'user', messageId: 'm1', taskId: process.argv[1], parts: [{ kind: 'text', text: 'hello' }] } };
+    startTask(1, params, queue);
+    setTimeout(() => process.exit(0), 200);`;
+  const r = spawnSync(process.execPath, ['-e', prog, forged], { cwd: ROOT, env: { ...process.env, KIMICLAW_TOKEN: TOKEN }, encoding: 'utf8', timeout: 20_000 });
+  assert.ok(r.stdout.includes('task crashed task=c1'), `${r.stdout}\n${r.stderr}`);
+  assert.ok(r.stdout.includes('error_type=CrashError'), r.stdout);
+  assert.ok(!r.stdout.includes('secret-crash-msg'), 'must log error type only, not message');
+  assertNoForgery(r.stdout);
+  assert.ok(!r.stdout.includes('D'.repeat(129)));
+});
+
 test('missing or blank KIMICLAW_TOKEN fails clearly', () => {
   for (const env of [{}, { KIMICLAW_TOKEN: '   ' }]) {
     const r = boot(env);
